@@ -96,27 +96,34 @@ class BloxFishingBot:
             time.sleep(1) # Extra wait before restarting
 
     def check_for_exclamation(self):
-        # Scan center of screen for exclamation.png
-        # We'll take a region around the center
+        # Scan center of screen for RED color (typical for exclamation mark)
         screen_width, screen_height = pyautogui.size()
-        region_width, region_height = 400, 400
+        region_width, region_height = 200, 200 # Smaller region for efficiency
         left = (screen_width - region_width) // 2
         top = (screen_height - region_height) // 2
         
         with mss.MSS() as sct:
             monitor = {"top": top, "left": left, "width": region_width, "height": region_height}
             img = np.array(sct.grab(monitor))
-            img_gray = cv2.cvtColor(img, cv2.COLOR_BGRA2GRAY)
+            # Convert to HSV
+            img_bgr = cv2.cvtColor(img, cv2.COLOR_BGRA2BGR)
+            hsv = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2HSV)
             
-            template = cv2.imread(EXCLAMATION_IMAGE, 0)
-            if template is None:
-                return False
-                
-            res = cv2.matchTemplate(img_gray, template, cv2.TM_CCOEFF_NORMED)
-            threshold = 0.7
-            loc = np.where(res >= threshold)
+            # Red color has two ranges in HSV
+            lower_red1 = np.array([0, 150, 150])
+            upper_red1 = np.array([10, 255, 255])
+            lower_red2 = np.array([170, 150, 150])
+            upper_red2 = np.array([180, 255, 255])
             
-            return len(loc[0]) > 0
+            mask1 = cv2.inRange(hsv, lower_red1, upper_red1)
+            mask2 = cv2.inRange(hsv, lower_red2, upper_red2)
+            mask = cv2.bitwise_or(mask1, mask2)
+            
+            # Count red pixels
+            red_pixels = cv2.countNonZero(mask)
+            
+            # If we find enough red pixels in a cluster, it's likely the exclamation mark
+            return red_pixels > 50 # Threshold can be adjusted
 
     def run_minigame(self):
         # Logic for minigame:
