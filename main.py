@@ -66,75 +66,50 @@ class BloxFishingBot:
 
     def bot_loop(self):
         while self.running:
-            # 1. Hold mouse for 1 second
+            # 1. Hold mouse for 0.6 seconds (Cast)
             self.status_var.set("Status: Casting...")
             pyautogui.mouseDown()
-            time.sleep(1)
+            time.sleep(0.6)
             pyautogui.mouseUp()
             
-            # 2. Wait for exclamation mark
-            self.status_var.set("Status: Waiting for bite...")
+            # 2. Wait for bite (Motion Detection)
+            self.status_var.set("Status: Waiting for motion...")
+            time.sleep(1.5) # Wait for splash to settle
+            
             found_bite = False
+            baseline_img = self.get_bite_region()
+            
             while self.running and not found_bite:
-                if self.check_for_exclamation():
-                    found_bite = True
-                    pyautogui.click()
-                    time.sleep(0.1) # Small delay before minigame starts
-                time.sleep(CHECK_INTERVAL)
+                current_img = self.get_bite_region()
+                if baseline_img is not None and current_img is not None:
+                    # Compare images
+                    diff = cv2.absdiff(baseline_img, current_img)
+                    _, diff_thresh = cv2.threshold(diff, 25, 255, cv2.THRESH_BINARY)
+                    change_amount = cv2.countNonZero(diff_thresh)
+                    
+                    if change_amount > 100: # Threshold for significant change
+                        found_bite = True
+                        pyautogui.click()
+                        time.sleep(0.1)
+                
+                time.sleep(0.05)
             
             if not self.running: break
             
             # 3. Minigame
             self.status_var.set("Status: Minigame!")
             self.run_minigame()
-            
-            if not self.running: break
-            
-            # 4. Post-minigame sequence
-            self.status_var.set("Status: Wrapping up...")
-            time.sleep(1)
-            pyautogui.click()
-            time.sleep(0.5)
-            pyautogui.click()
-            time.sleep(1) # Extra wait before restarting
 
-    def check_for_exclamation(self):
-        # ROI for exclamation mark (center-top)
+    def get_bite_region(self):
         screen_width, screen_height = pyautogui.size()
-        region_width, region_height = 400, 300 
+        region_width, region_height = 200, 200
         left = (screen_width - region_width) // 2
         top = (screen_height // 2) - 250
         
         with mss.MSS() as sct:
             monitor = {"top": top, "left": left, "width": region_width, "height": region_height}
             img = np.array(sct.grab(monitor))
-            img_gray = cv2.cvtColor(img, cv2.COLOR_BGRA2GRAY)
-            
-            # Try matching with different reference images
-            templates = ['exclamation.png', 'exclamation 2.png', 'exclamation3.png']
-            
-            for t_path in templates:
-                if not os.path.exists(t_path):
-                    continue
-                    
-                template = cv2.imread(t_path, 0)
-                if template is None:
-                    continue
-                
-                # Resize template if it's too large for the ROI
-                th, tw = template.shape[:2]
-                if th > region_height or tw > region_width:
-                    scale = min(region_width/tw, region_height/th) * 0.8
-                    template = cv2.resize(template, None, fx=scale, fy=scale)
-                
-                res = cv2.matchTemplate(img_gray, template, cv2.TM_CCOEFF_NORMED)
-                threshold = 0.65 # Balance between accuracy and sensitivity
-                loc = np.where(res >= threshold)
-                
-                if len(loc[0]) > 0:
-                    return True
-            
-            return False
+            return cv2.cvtColor(img, cv2.COLOR_BGRA2GRAY)
 
     def run_minigame(self):
         screen_width, screen_height = pyautogui.size()
