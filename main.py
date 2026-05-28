@@ -127,68 +127,82 @@ class BloxFishingBot:
 
     def run_minigame(self):
         # Logic for minigame:
-        # Detect Blue (Fish), Green (Player), Yellow (Chest)
-        # Typically these are in a specific bar area.
-        # For simplicity, we search the middle-bottom area.
+        # Detect Blue (Fish), Green/Grey (Player), Yellow (Chest)
+        # We scan a large area to find the minigame bar first
         
         screen_width, screen_height = pyautogui.size()
-        # Define minigame area - adjust as needed
-        # Assuming the bar is in the lower half
-        monitor = {"top": int(screen_height * 0.6), "left": int(screen_width * 0.2), 
-                   "width": int(screen_width * 0.6), "height": int(screen_height * 0.3)}
+        # Scan the bottom half of the screen where the bar usually is
+        monitor = {"top": int(screen_height * 0.4), "left": int(screen_width * 0.1), 
+                   "width": int(screen_width * 0.8), "height": int(screen_height * 0.5)}
         
         timeout = time.time() + 60 # Max 60 seconds for minigame
+        last_check_time = time.time()
         
         with mss.MSS() as sct:
             while self.running and time.time() < timeout:
                 img = np.array(sct.grab(monitor))
-                hsv = cv2.cvtColor(img, cv2.COLOR_BGRA2BGR)
-                hsv = cv2.cvtColor(hsv, cv2.COLOR_BGR2HSV)
+                # Convert to HSV
+                img_bgr = cv2.cvtColor(img, cv2.COLOR_BGRA2BGR)
+                hsv = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2HSV)
                 
                 # Define color ranges
                 # Blue (Fish)
-                lower_blue = np.array([100, 150, 50])
+                lower_blue = np.array([90, 100, 100])
                 upper_blue = np.array([130, 255, 255])
                 
-                # Green (Player)
-                lower_green = np.array([40, 100, 50])
-                upper_green = np.array([80, 255, 255])
+                # Green (Player - Active)
+                lower_green = np.array([35, 50, 50])
+                upper_green = np.array([85, 255, 255])
+                
+                # Grey (Player - Inactive/Not pressing)
+                # Grey has low saturation
+                lower_grey = np.array([0, 0, 40])
+                upper_grey = np.array([180, 50, 200])
                 
                 # Yellow (Chest)
                 lower_yellow = np.array([20, 100, 100])
-                upper_yellow = np.array([40, 255, 255])
+                upper_yellow = np.array([35, 255, 255])
                 
-                # Find positions (x-coordinates)
+                # Find masks
                 mask_blue = cv2.inRange(hsv, lower_blue, upper_blue)
                 mask_green = cv2.inRange(hsv, lower_green, upper_green)
+                mask_grey = cv2.inRange(hsv, lower_grey, upper_grey)
                 mask_yellow = cv2.inRange(hsv, lower_yellow, upper_yellow)
                 
-                # Check for Chest first
-                y_coords = np.where(mask_yellow > 0)[1]
-                b_coords = np.where(mask_blue > 0)[1]
-                g_coords = np.where(mask_green > 0)[1]
+                # Player is either green or grey
+                # We filter grey to only look for rectangles (horizontal bar parts)
+                mask_player = cv2.bitwise_or(mask_green, mask_grey)
                 
-                if len(g_coords) == 0:
-                    # If minigame not found or finished, exit loop
-                    # But we need a better check. Let's check for the green bar or absence of fish.
-                    if len(b_coords) == 0:
+                # Find coordinates
+                y_coords_y, x_coords_y = np.where(mask_yellow > 0)
+                y_coords_b, x_coords_b = np.where(mask_blue > 0)
+                y_coords_p, x_coords_p = np.where(mask_player > 0)
+                
+                # If we don't see the player or fish for a while, the minigame might have ended
+                if len(x_coords_p) == 0 and len(x_coords_b) == 0:
+                    if time.time() - last_check_time > 2: # 2 seconds of nothing = ended
                         break
-                    time.sleep(0.05)
                     continue
                 
-                player_x = np.mean(g_coords)
-                target_x = None
+                last_check_time = time.time()
                 
-                if len(y_coords) > 0:
-                    target_x = np.mean(y_coords)
-                elif len(b_coords) > 0:
-                    target_x = np.mean(b_coords)
-                
-                if target_x is not None:
-                    if player_x < target_x:
-                        pyautogui.mouseDown()
-                    else:
-                        pyautogui.mouseUp()
+                # Logic: Find the center X of the player and the target
+                if len(x_coords_p) > 0:
+                    player_x = np.mean(x_coords_p)
+                    
+                    target_x = None
+                    if len(x_coords_y) > 10: # Minimum pixels to avoid noise
+                        target_x = np.mean(x_coords_y)
+                    elif len(x_coords_b) > 10:
+                        target_x = np.mean(x_coords_b)
+                    
+                    if target_x is not None:
+                        # Control: If player is to the left of target, press (go right)
+                        # If player is to the right, release (go left)
+                        if player_x < target_x:
+                            pyautogui.mouseDown()
+                        else:
+                            pyautogui.mouseUp()
                 
                 time.sleep(MINIGAME_CHECK_INTERVAL)
             
