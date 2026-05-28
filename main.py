@@ -99,38 +99,42 @@ class BloxFishingBot:
             time.sleep(1) # Extra wait before restarting
 
     def check_for_exclamation(self):
-        # Even higher and smaller ROI to focus ONLY on where the exclamation mark appears
+        # ROI for exclamation mark (center-top)
         screen_width, screen_height = pyautogui.size()
-        region_width, region_height = 150, 100 
+        region_width, region_height = 400, 300 
         left = (screen_width - region_width) // 2
-        # Move it significantly UP from the center to stay clear of the character body
         top = (screen_height // 2) - 250
         
         with mss.MSS() as sct:
             monitor = {"top": top, "left": left, "width": region_width, "height": region_height}
             img = np.array(sct.grab(monitor))
-            img_bgr = cv2.cvtColor(img, cv2.COLOR_BGRA2BGR)
-            hsv = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2HSV)
+            img_gray = cv2.cvtColor(img, cv2.COLOR_BGRA2GRAY)
             
-            # Bright, high-saturation Red ONLY
-            lower_red1 = np.array([0, 180, 180])
-            upper_red1 = np.array([10, 255, 255])
-            lower_red2 = np.array([170, 180, 180])
-            upper_red2 = np.array([180, 255, 255])
+            # Try matching with different reference images
+            templates = ['exclamation.png', 'exclamation 2.png', 'exclamation3.png']
             
-            mask1 = cv2.inRange(hsv, lower_red1, upper_red1)
-            mask2 = cv2.inRange(hsv, lower_red2, upper_red2)
-            mask = cv2.bitwise_or(mask1, mask2)
+            for t_path in templates:
+                if not os.path.exists(t_path):
+                    continue
+                    
+                template = cv2.imread(t_path, 0)
+                if template is None:
+                    continue
+                
+                # Resize template if it's too large for the ROI
+                th, tw = template.shape[:2]
+                if th > region_height or tw > region_width:
+                    scale = min(region_width/tw, region_height/th) * 0.8
+                    template = cv2.resize(template, None, fx=scale, fy=scale)
+                
+                res = cv2.matchTemplate(img_gray, template, cv2.TM_CCOEFF_NORMED)
+                threshold = 0.65 # Balance between accuracy and sensitivity
+                loc = np.where(res >= threshold)
+                
+                if len(loc[0]) > 0:
+                    return True
             
-            # Noise reduction for exclamation
-            kernel = np.ones((3,3), np.uint8)
-            mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
-            
-            red_pixels = cv2.countNonZero(mask)
-            
-            # An exclamation mark is small. If red_pixels is too high (e.g. > 1000), 
-            # it's probably skin or floor. If too low, it's noise.
-            return 40 < red_pixels < 600 
+            return False
 
     def run_minigame(self):
         screen_width, screen_height = pyautogui.size()
