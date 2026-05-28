@@ -66,15 +66,16 @@ class BloxFishingBot:
 
     def bot_loop(self):
         while self.running:
-            # 1. Hold mouse for 0.6 seconds (Cast)
+            # 1. Hold mouse for 0.5 seconds (Cast)
             self.status_var.set("Status: Casting...")
             pyautogui.mouseDown()
-            time.sleep(0.6)
+            time.sleep(0.5)
             pyautogui.mouseUp()
             
             # 2. Wait for bite (Motion Detection)
             self.status_var.set("Status: Waiting for motion...")
-            time.sleep(1.5) # Wait for splash to settle
+            # Wait longer for splash and character movement to settle
+            time.sleep(2.5) 
             
             found_bite = False
             baseline_img = self.get_bite_region()
@@ -84,10 +85,12 @@ class BloxFishingBot:
                 if baseline_img is not None and current_img is not None:
                     # Compare images
                     diff = cv2.absdiff(baseline_img, current_img)
-                    _, diff_thresh = cv2.threshold(diff, 25, 255, cv2.THRESH_BINARY)
+                    # Higher threshold (40) to ignore rain/fine noise
+                    _, diff_thresh = cv2.threshold(diff, 40, 255, cv2.THRESH_BINARY)
                     change_amount = cv2.countNonZero(diff_thresh)
                     
-                    if change_amount > 100: # Threshold for significant change
+                    # Higher pixel count threshold (500) for significant change (like a popup)
+                    if change_amount > 500: 
                         found_bite = True
                         pyautogui.click()
                         time.sleep(0.1)
