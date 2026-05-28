@@ -35,6 +35,9 @@ class BloxFishingBot:
         self.status_label = ttk.Label(main_frame, textvariable=self.status_var)
         self.status_label.pack(pady=5)
         
+        self.debug_var = tk.BooleanVar(value=False)
+        ttk.Checkbutton(main_frame, text="Debug Mode (Visual)", variable=self.debug_var).pack(pady=5)
+        
         self.start_btn = ttk.Button(main_frame, text="Start (F6)", command=self.toggle_bot)
         self.start_btn.pack(pady=5)
         
@@ -181,6 +184,19 @@ class BloxFishingBot:
                 time.sleep(MINIGAME_CHECK_INTERVAL)
             
             pyautogui.mouseUp()
+
+if __name__ == "__main__":
+    if not os.path.exists(EXCLAMATION_IMAGE):
+        print(f"Error: {EXCLAMATION_IMAGE} not found.")
+    
+    root = tk.Tk()
+    app = BloxFishingBot(root)
+    root.mainloop()
+eep(MINIGAME_CHECK_INTERVAL)
+            
+            pyautogui.mouseUp()
+            if self.debug_var.get():
+                cv2.destroyAllWindows()
 
 if __name__ == "__main__":
     if not os.path.exists(EXCLAMATION_IMAGE):
