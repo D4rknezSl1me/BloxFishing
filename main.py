@@ -19,7 +19,7 @@ class BloxFishingBot:
     def __init__(self, root):
         self.root = root
         self.root.title("BloxFishing Bot")
-        self.root.geometry("300x200")
+        self.root.geometry("300x250")
         
         self.running = False
         self.status_var = tk.StringVar(value="Status: Stopped")
@@ -103,7 +103,6 @@ class BloxFishingBot:
         screen_width, screen_height = pyautogui.size()
         region_width, region_height = 300, 200 
         left = (screen_width - region_width) // 2
-        # Move the scan area UP to avoid the floor/character body
         top = (screen_height // 2) - 200
         
         with mss.MSS() as sct:
@@ -112,7 +111,7 @@ class BloxFishingBot:
             img_bgr = cv2.cvtColor(img, cv2.COLOR_BGRA2BGR)
             hsv = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2HSV)
             
-            # Narrower, BRIGHTER Red range to avoid floor/dull colors
+            # Narrower, BRIGHTER Red range
             lower_red1 = np.array([0, 150, 150])
             upper_red1 = np.array([10, 255, 255])
             lower_red2 = np.array([170, 150, 150])
@@ -123,15 +122,13 @@ class BloxFishingBot:
             mask = cv2.bitwise_or(mask1, mask2)
             
             red_pixels = cv2.countNonZero(mask)
-            # Threshold needs to be specific enough to be the exclamation
             return 50 < red_pixels < 2000 
 
     def run_minigame(self):
         screen_width, screen_height = pyautogui.size()
-        # Narrow the scan area horizontally and vertically to avoid UI/Menus
-        # Focusing on the lower-center where the bar actually resides
-        monitor = {"top": int(screen_height * 0.65), "left": int(screen_width * 0.25), 
-                   "width": int(screen_width * 0.5), "height": int(screen_height * 0.15)}
+        # SUPER RESTRICTED AREA: Only a thin horizontal slice
+        monitor = {"top": int(screen_height * 0.72), "left": int(screen_width * 0.3), 
+                   "width": int(screen_width * 0.4), "height": int(screen_height * 0.1)}
         
         timeout = time.time() + 60
         last_check_time = time.time()
@@ -142,57 +139,59 @@ class BloxFishingBot:
                 img_bgr = cv2.cvtColor(img, cv2.COLOR_BGRA2BGR)
                 hsv = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2HSV)
                 
-                # Refined Minigame Colors
-                # Blue (Fish) - Very saturated
-                mask_blue = cv2.inRange(hsv, np.array([100, 150, 100]), np.array([130, 255, 255]))
+                # EXTREMELY SPECIFIC FILTERS
+                # Blue (Fish) - Focused on a very saturated blue
+                mask_blue = cv2.inRange(hsv, np.array([115, 200, 100]), np.array([125, 255, 255]))
                 # Green (Player Active)
-                mask_green = cv2.inRange(hsv, np.array([40, 100, 100]), np.array([80, 255, 255]))
-                # Grey (Player Inactive) - Very low saturation
-                mask_grey = cv2.inRange(hsv, np.array([0, 0, 50]), np.array([180, 30, 150]))
-                # Yellow (Chest) - Specific saturated yellow
-                mask_yellow = cv2.inRange(hsv, np.array([25, 150, 150]), np.array([35, 255, 255]))
+                mask_green = cv2.inRange(hsv, np.array([55, 180, 100]), np.array([70, 255, 255]))
+                # Grey (Player Inactive)
+                mask_grey = cv2.inRange(hsv, np.array([0, 0, 40]), np.array([180, 20, 160]))
+                # Yellow (Chest)
+                mask_yellow = cv2.inRange(hsv, np.array([28, 180, 180]), np.array([32, 255, 255]))
+                
+                # Noise reduction
+                kernel = np.ones((3,3), np.uint8)
+                mask_blue = cv2.morphologyEx(mask_blue, cv2.MORPH_OPEN, kernel)
                 
                 mask_player = cv2.bitwise_or(mask_green, mask_grey)
                 
+                if self.debug_var.get():
+                    debug_img = img_bgr.copy()
+                    debug_img[mask_blue > 0] = [255, 0, 0]
+                    debug_img[mask_player > 0] = [0, 255, 0]
+                    debug_img[mask_yellow > 0] = [0, 255, 255]
+                    cv2.imshow("Debug", debug_img)
+                    if cv2.waitKey(1) & 0xFF == ord('q'):
+                        self.debug_var.set(False)
+                        cv2.destroyAllWindows()
+
                 y_coords_y, x_coords_y = np.where(mask_yellow > 0)
                 y_coords_b, x_coords_b = np.where(mask_blue > 0)
                 y_coords_p, x_coords_p = np.where(mask_player > 0)
                 
-                if len(x_coords_p) < 10 and len(x_coords_b) < 10:
-                    if time.time() - last_check_time > 3:
+                if len(x_coords_p) < 5 and len(x_coords_b) < 5:
+                    if time.time() - last_check_time > 4:
                         break
                     continue
                 
                 last_check_time = time.time()
                 
-                if len(x_coords_p) > 20: # Ensure we see a significant part of the player bar
+                if len(x_coords_p) > 10:
                     player_x = np.median(x_coords_p)
                     
                     target_x = None
-                    # Prioritize Treasure (Yellow) ONLY if it's a significant cluster
-                    if len(x_coords_y) > 50:
+                    if len(x_coords_y) > 20:
                         target_x = np.median(x_coords_y)
-                    elif len(x_coords_b) > 20:
+                    elif len(x_coords_b) > 10:
                         target_x = np.median(x_coords_b)
                     
                     if target_x is not None:
-                        if player_x < target_x - 5:
+                        if player_x < target_x - 3:
                             pyautogui.mouseDown()
-                        elif player_x > target_x + 5:
+                        elif player_x > target_x + 3:
                             pyautogui.mouseUp()
                 
                 time.sleep(MINIGAME_CHECK_INTERVAL)
-            
-            pyautogui.mouseUp()
-
-if __name__ == "__main__":
-    if not os.path.exists(EXCLAMATION_IMAGE):
-        print(f"Error: {EXCLAMATION_IMAGE} not found.")
-    
-    root = tk.Tk()
-    app = BloxFishingBot(root)
-    root.mainloop()
-eep(MINIGAME_CHECK_INTERVAL)
             
             pyautogui.mouseUp()
             if self.debug_var.get():
