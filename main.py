@@ -103,7 +103,7 @@ class BloxFishingBot:
         left = (screen_width - region_width) // 2
         top = (screen_height - region_height) // 2
         
-        with mss.mss() as sct:
+        with mss.MSS() as sct:
             monitor = {"top": top, "left": left, "width": region_width, "height": region_height}
             img = np.array(sct.grab(monitor))
             img_gray = cv2.cvtColor(img, cv2.COLOR_BGRA2GRAY)
@@ -132,7 +132,7 @@ class BloxFishingBot:
         
         timeout = time.time() + 60 # Max 60 seconds for minigame
         
-        with mss.mss() as sct:
+        with mss.MSS() as sct:
             while self.running and time.time() < timeout:
                 img = np.array(sct.grab(monitor))
                 hsv = cv2.cvtColor(img, cv2.COLOR_BGRA2BGR)
