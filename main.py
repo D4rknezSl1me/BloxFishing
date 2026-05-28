@@ -96,11 +96,12 @@ class BloxFishingBot:
             time.sleep(1) # Extra wait before restarting
 
     def check_for_exclamation(self):
-        # Scan a LARGER center region for RED
+        # Focus on a smaller, higher region above center to avoid the floor
         screen_width, screen_height = pyautogui.size()
-        region_width, region_height = 400, 400 
+        region_width, region_height = 300, 200 
         left = (screen_width - region_width) // 2
-        top = (screen_height - region_height) // 2
+        # Move the scan area UP to avoid the floor/character body
+        top = (screen_height // 2) - 200
         
         with mss.MSS() as sct:
             monitor = {"top": top, "left": left, "width": region_width, "height": region_height}
@@ -108,10 +109,10 @@ class BloxFishingBot:
             img_bgr = cv2.cvtColor(img, cv2.COLOR_BGRA2BGR)
             hsv = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2HSV)
             
-            # More permissive Red range
-            lower_red1 = np.array([0, 70, 70])
-            upper_red1 = np.array([15, 255, 255])
-            lower_red2 = np.array([160, 70, 70])
+            # Narrower, BRIGHTER Red range to avoid floor/dull colors
+            lower_red1 = np.array([0, 150, 150])
+            upper_red1 = np.array([10, 255, 255])
+            lower_red2 = np.array([170, 150, 150])
             upper_red2 = np.array([180, 255, 255])
             
             mask1 = cv2.inRange(hsv, lower_red1, upper_red1)
@@ -119,13 +120,15 @@ class BloxFishingBot:
             mask = cv2.bitwise_or(mask1, mask2)
             
             red_pixels = cv2.countNonZero(mask)
-            return red_pixels > 20 # Lower threshold for detection
+            # Threshold needs to be specific enough to be the exclamation
+            return 50 < red_pixels < 2000 
 
     def run_minigame(self):
         screen_width, screen_height = pyautogui.size()
-        # Scan almost the whole screen height to be safe, but focus horizontally
-        monitor = {"top": int(screen_height * 0.2), "left": int(screen_width * 0.1), 
-                   "width": int(screen_width * 0.8), "height": int(screen_height * 0.7)}
+        # Narrow the scan area horizontally and vertically to avoid UI/Menus
+        # Focusing on the lower-center where the bar actually resides
+        monitor = {"top": int(screen_height * 0.65), "left": int(screen_width * 0.25), 
+                   "width": int(screen_width * 0.5), "height": int(screen_height * 0.15)}
         
         timeout = time.time() + 60
         last_check_time = time.time()
@@ -136,11 +139,15 @@ class BloxFishingBot:
                 img_bgr = cv2.cvtColor(img, cv2.COLOR_BGRA2BGR)
                 hsv = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2HSV)
                 
-                # Colors based on typical Roblox/BloxFishing palettes
-                mask_blue = cv2.inRange(hsv, np.array([90, 50, 50]), np.array([130, 255, 255]))
-                mask_green = cv2.inRange(hsv, np.array([35, 40, 40]), np.array([90, 255, 255]))
-                mask_grey = cv2.inRange(hsv, np.array([0, 0, 40]), np.array([180, 40, 180])) # Wide grey
-                mask_yellow = cv2.inRange(hsv, np.array([15, 50, 50]), np.array([40, 255, 255]))
+                # Refined Minigame Colors
+                # Blue (Fish) - Very saturated
+                mask_blue = cv2.inRange(hsv, np.array([100, 150, 100]), np.array([130, 255, 255]))
+                # Green (Player Active)
+                mask_green = cv2.inRange(hsv, np.array([40, 100, 100]), np.array([80, 255, 255]))
+                # Grey (Player Inactive) - Very low saturation
+                mask_grey = cv2.inRange(hsv, np.array([0, 0, 50]), np.array([180, 30, 150]))
+                # Yellow (Chest) - Specific saturated yellow
+                mask_yellow = cv2.inRange(hsv, np.array([25, 150, 150]), np.array([35, 255, 255]))
                 
                 mask_player = cv2.bitwise_or(mask_green, mask_grey)
                 
@@ -148,30 +155,28 @@ class BloxFishingBot:
                 y_coords_b, x_coords_b = np.where(mask_blue > 0)
                 y_coords_p, x_coords_p = np.where(mask_player > 0)
                 
-                if len(x_coords_p) < 5 and len(x_coords_b) < 5:
+                if len(x_coords_p) < 10 and len(x_coords_b) < 10:
                     if time.time() - last_check_time > 3:
                         break
                     continue
                 
                 last_check_time = time.time()
                 
-                if len(x_coords_p) > 0:
-                    # Calculate center of the player bar
+                if len(x_coords_p) > 20: # Ensure we see a significant part of the player bar
                     player_x = np.median(x_coords_p)
                     
                     target_x = None
-                    if len(x_coords_y) > 5:
+                    # Prioritize Treasure (Yellow) ONLY if it's a significant cluster
+                    if len(x_coords_y) > 50:
                         target_x = np.median(x_coords_y)
-                    elif len(x_coords_b) > 5:
+                    elif len(x_coords_b) > 20:
                         target_x = np.median(x_coords_b)
                     
                     if target_x is not None:
-                        # Deadzone to avoid jitter
-                        if player_x < target_x - 10:
+                        if player_x < target_x - 5:
                             pyautogui.mouseDown()
-                        elif player_x > target_x + 10:
+                        elif player_x > target_x + 5:
                             pyautogui.mouseUp()
-                        # If within 10px, keep current state or release? Let's release to avoid overshooting
                 
                 time.sleep(MINIGAME_CHECK_INTERVAL)
             
