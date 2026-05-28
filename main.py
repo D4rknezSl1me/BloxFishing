@@ -99,11 +99,12 @@ class BloxFishingBot:
             time.sleep(1) # Extra wait before restarting
 
     def check_for_exclamation(self):
-        # Focus on a smaller, higher region above center to avoid the floor
+        # Even higher and smaller ROI to focus ONLY on where the exclamation mark appears
         screen_width, screen_height = pyautogui.size()
-        region_width, region_height = 300, 200 
+        region_width, region_height = 150, 100 
         left = (screen_width - region_width) // 2
-        top = (screen_height // 2) - 200
+        # Move it significantly UP from the center to stay clear of the character body
+        top = (screen_height // 2) - 250
         
         with mss.MSS() as sct:
             monitor = {"top": top, "left": left, "width": region_width, "height": region_height}
@@ -111,18 +112,25 @@ class BloxFishingBot:
             img_bgr = cv2.cvtColor(img, cv2.COLOR_BGRA2BGR)
             hsv = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2HSV)
             
-            # Narrower, BRIGHTER Red range
-            lower_red1 = np.array([0, 150, 150])
+            # Bright, high-saturation Red ONLY
+            lower_red1 = np.array([0, 180, 180])
             upper_red1 = np.array([10, 255, 255])
-            lower_red2 = np.array([170, 150, 150])
+            lower_red2 = np.array([170, 180, 180])
             upper_red2 = np.array([180, 255, 255])
             
             mask1 = cv2.inRange(hsv, lower_red1, upper_red1)
             mask2 = cv2.inRange(hsv, lower_red2, upper_red2)
             mask = cv2.bitwise_or(mask1, mask2)
             
+            # Noise reduction for exclamation
+            kernel = np.ones((3,3), np.uint8)
+            mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
+            
             red_pixels = cv2.countNonZero(mask)
-            return 50 < red_pixels < 2000 
+            
+            # An exclamation mark is small. If red_pixels is too high (e.g. > 1000), 
+            # it's probably skin or floor. If too low, it's noise.
+            return 40 < red_pixels < 600 
 
     def run_minigame(self):
         screen_width, screen_height = pyautogui.size()
